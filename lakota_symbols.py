@@ -1,8 +1,8 @@
-﻿#!/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 This experiment was created using PsychoPy3 Experiment Builder (v2025.1.1),
-    on October 26, 2025, at 11:08
+    on November 10, 2025, at 07:16
 If you publish work using this script the most relevant publication is:
 
     Peirce J, Gray JR, Simpson S, MacAskill M, Höchenberger R, Sogo H, Kastman E, Lindeløv JK. (2019) 
@@ -384,7 +384,7 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
     
     # --- Initialize components for Routine "instructions" ---
     instruct = visual.TextStim(win=win, name='instruct',
-        text='You will see a series of visual designs.\n\n\nYour task is simply to look carefully at each design while keeping your eyes on the screen and minimizing movement.\n\n\nEach design will appear for 5 seconds, and you will see each one several times throughout the experiment.\n\n\n\nPlease remain as still as possible during the presentation — try not to move your eyes, face, or hands.\n\n\nThere are 20 designs in total, and each will be shown 6 times in random order.\n\n\n\nWhen you are ready to begin,\npress the SPACE BAR to start the experiment.',
+        text='You will see a series of visual designs.\n\n\nYour task is simply to look carefully at each design while keeping your eyes on the screen and minimizing movement.\n\n\nEach design will appear for 5 seconds, and you will see each one several times throughout the experiment.\n\nAfter the first time each symbol is shown, you will be asked to rate how meaningful it is to you. This question will not appear again for any subsequent presentations of the same symbol.\n\n\n\nPlease remain as still as possible during the presentation — try not to move your eyes, face, or hands.\n\n\nThere are 20 designs in total, and each will be shown 6 times in random order.\n\n\n\nWhen you are ready to begin,\npress the SPACE BAR to start the experiment.',
         font='Arial',
         pos=(0, 0), draggable=False, height=0.02, wrapWidth=None, ori=0.0, 
         color='white', colorSpace='rgb', opacity=None, 
@@ -425,7 +425,7 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
     empty_gray = visual.ImageStim(
         win=win,
         name='empty_gray', 
-        image='stimuli/empty_gray.jpg', mask=None, anchor='center',
+        image='stimuli/fixation_cross.png', mask=None, anchor='center',
         ori=0.0, pos=(0, 0), draggable=False, size=(0.5, 0.5),
         color=[1,1,1], colorSpace='rgb', opacity=None,
         flipHoriz=False, flipVert=False,
