@@ -6,7 +6,7 @@ directly in the EEG via a **Trigger-Hub (MMBT)** marker box.
 
 ## Quick start
 
-See **[SETUP.md](SETUP.md)** for the full hardware + software setup — driver
+See **[docs/SETUP.md](docs/SETUP.md)** for the full hardware + software setup — driver
 install, COM-port configuration, trigger wiring, and both the **single-computer**
 and **two-computer** configurations.
 
@@ -14,11 +14,11 @@ and **two-computer** configurations.
 
 | Path | What it is |
 |------|------------|
-| `lakota_symbols_triggerhub-02.psyexp` | The experiment — open in PsychoPy Builder |
-| `lakota_symbols_triggerhub-02_lastrun.py` | Generated script — the file you actually run; set the MMBT COM port here |
+| `lakota_symbols_triggerhub-02.psyexp` | The experiment — open and **Run** in PsychoPy Builder; set the MMBT COM port in its `init_code` component |
+| `lakota_symbols_triggerhub-02_lastrun.py` | Generated script (created automatically by Builder) |
 | `stimuli/` + `stimuli_list.xlsx` | Symbol images and the trial list |
 | `mmbt/` | MMBT (Trigger-Hub) USB drivers + quickguide |
-| `SETUP.md` | Setup & operation guide |
+| `docs/SETUP.md` | Setup & operation guide |
 
 ## Experiment flow
 
