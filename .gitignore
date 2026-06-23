@@ -1,0 +1,19 @@
+# --- Large local bundles (download separately, not versioned) ---
+DSI-streamer-and-drivers/
+DSI-streamer-and-drivers.zip
+mmbt/
+
+# --- Recorded data / pilots (kept local) ---
+data/
+test-pilot/
+
+# --- Unrelated experiment bundle ---
+All_together/
+
+# --- Editor / temp ---
+.vscode/
+scripts/temp-*.csv
+
+# --- Python ---
+__pycache__/
+*.pyc
