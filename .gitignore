@@ -13,7 +13,7 @@ test-pilot/
 All_together/
 
 # --- MMBT extras not needed in-repo (drivers + quickguide ARE tracked) ---
-mmbt/TachyonSetup.exe
+# mmbt/TachyonSetup.exe
 mmbt/MMBT-S_Flyer.pdf
 
 # --- Editor / temp ---
@@ -23,3 +23,5 @@ scripts/temp-*.csv
 # --- Python ---
 __pycache__/
 *.pyc
+
+.venv/
