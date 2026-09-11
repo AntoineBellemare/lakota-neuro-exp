@@ -24,15 +24,42 @@ def _load_clean_or_raw(sub, verbose=False):
     return io.load_eeg(sub, verbose=verbose)
 
 
+def _attach_metadata(sub, cond, ep):
+    """Attach per-trial condition metadata, aligning for a late EEG start.
+
+    If fewer epochs than behavioral trials, assume the first trials were missed
+    (recording started late) and use the trailing trials.
+    """
+    from . import io
+
+    trials = io.condition_trials(sub, cond)
+    n_ep, n_tr = len(ep), len(trials)
+    if n_ep == n_tr:
+        md = trials
+    elif n_ep < n_tr:
+        off = n_tr - n_ep
+        md = trials.iloc[off:].reset_index(drop=True)
+        print(f"[epoch] {sub}: {cond}: {n_ep} epochs vs {n_tr} trials — "
+              f"assuming first {off} trial(s) missed (late start); aligned to trailing trials")
+    else:
+        print(f"[epoch] {sub}: {cond}: more epochs ({n_ep}) than trials ({n_tr}) — metadata skipped")
+        return ep
+    ep.metadata = md
+    return ep
+
+
 def epoch(sub: str, save: bool = True, verbose: bool = False) -> dict:
+    import numpy as np
     import mne
 
     raw = _load_clean_or_raw(sub, verbose=verbose)
     events = mne.find_events(raw, stim_channel="STI", consecutive=True, verbose=False)
 
     ecfg = C.CONFIG["epoch"]
+    ar_cfg = ecfg.get("autoreject", {})
+    use_ar = ar_cfg.get("enabled", False)
     reject = None
-    if ecfg.get("reject_uv"):
+    if not use_ar and ecfg.get("reject_uv"):
         reject = {"eeg": ecfg["reject_uv"] * 1e-6}
 
     out_dir = C.deriv_dir(sub, "eeg")
@@ -50,19 +77,41 @@ def epoch(sub: str, save: bool = True, verbose: bool = False) -> dict:
             tmin=w["tmin"], tmax=w["tmax"], baseline=baseline,
             reject=reject, preload=True, verbose=verbose,
         )
-        # median peak-to-peak amplitude across kept epochs (helps set a threshold)
-        p2p = ""
-        if len(ep):
-            import numpy as np
-            data = ep.get_data(picks="eeg")           # (n_ep, n_ch, n_t)
-            med = float(np.median(data.max(-1) - data.min(-1)) * 1e6)
-            p2p = f", median p2p {med:.0f} µV"
+        ep = _attach_metadata(sub, cond, ep)
+
+        note = ""
+        if use_ar and len(ep) >= 4:
+            ep, note = _run_autoreject(sub, cond, ep, ar_cfg, out_dir, verbose)
+
         epochs[cond] = ep
         if save:
             fpath = out_dir / f"{sub}_cond-{cond}_epo.fif"
             ep.save(fpath, overwrite=True, verbose=verbose)
-            print(f"[epoch] {sub}: {cond} -> {len(ep)}/{n_ev} epochs kept{p2p}  ({fpath.name})")
+            data = ep.get_data(picks="eeg")
+            med = float(np.median(data.max(-1) - data.min(-1)) * 1e6) if len(ep) else float("nan")
+            print(f"[epoch] {sub}: {cond} -> {len(ep)}/{n_ev} epochs kept, "
+                  f"median p2p {med:.0f} µV{note}  ({fpath.name})")
     return epochs
+
+
+def _run_autoreject(sub, cond, ep, ar_cfg, out_dir, verbose):
+    """Fit AutoReject, drop/interpolate, and pickle the reject log for QC plots."""
+    import pickle
+
+    from autoreject import AutoReject
+
+    n_before = len(ep)
+    cv = min(ar_cfg.get("cv", 5), n_before)
+    ar = AutoReject(
+        n_interpolate=ar_cfg.get("n_interpolate", [1, 2, 3, 4]),
+        cv=cv, random_state=ar_cfg.get("random_state", 97),
+        n_jobs=1, verbose=False,
+    )
+    ep_clean, reject_log = ar.fit_transform(ep, return_log=True)
+    with open(out_dir / f"{sub}_cond-{cond}_rejectlog.pkl", "wb") as fh:
+        pickle.dump(reject_log, fh)
+    n_drop = n_before - len(ep_clean)
+    return ep_clean, f"  [autoreject: dropped {n_drop}/{n_before}]"
 
 
 def resting_segments(sub: str, verbose: bool = False):

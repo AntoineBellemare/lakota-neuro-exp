@@ -257,6 +257,24 @@ def fig_interpolation(sub, raw_filt):
     return fig
 
 
+def fig_autoreject_logs(sub):
+    """AutoReject decision grids (good / interpolated / dropped) per condition."""
+    import glob
+    import pickle
+
+    figs = []
+    for pkl in sorted(glob.glob(str(C.paths.derivatives_dir / sub / "eeg" / "*_rejectlog.pkl"))):
+        cond = pkl.split("cond-")[-1].split("_rejectlog")[0]
+        with open(pkl, "rb") as fh:
+            rl = pickle.load(fh)
+        rl.plot(orientation="horizontal", show=False)
+        fig = plt.gcf()
+        fig.suptitle(f"{sub} — autoreject: {cond} (green=good, blue=interpolated, red=dropped)",
+                     fontweight="bold", fontsize=10)
+        figs.append(fig)
+    return figs
+
+
 def fig_epoch_rejection(sub):
     """Per-epoch × channel peak-to-peak, with candidate reject thresholds."""
     import mne
@@ -324,6 +342,7 @@ def generate_all(sub: str) -> list:
         ("09_bad_channels", lambda: [fig_bad_channels(sub, raw_filt)]),
         ("10_interpolation", lambda: [f for f in [fig_interpolation(sub, raw_filt)] if f]),
         ("11_epoch_rejection", lambda: [f for f in [fig_epoch_rejection(sub)] if f]),
+        ("12_autoreject_log", lambda: fig_autoreject_logs(sub)),
     ]
 
     saved, all_figs = [], []

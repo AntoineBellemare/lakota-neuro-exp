@@ -51,8 +51,8 @@ preprocess:
   h_freq: 40.0
   notch: true
   bad_channels:             # per-subject, filled in after QC review
-    sub-01: [T8, P7]        # failed dry electrodes: T8 (right-temporal, ~14x median),
-                            # P7 (left-posterior, drove the evoked ~4.5x median)
+    sub-01: [T8]            # T8: failed right-temporal dry electrode (~14x median).
+                            # P7 kept — its bad epochs are handled by autoreject instead.
   ica:
     enabled: true
     method: infomax         # extended infomax (no extra deps); or fastica (needs sklearn), picard
@@ -66,10 +66,21 @@ epoch:
   long_view:  {tmin: -0.2, tmax: 5.0, baseline: [-0.2, 0.0]}
   quick_view: {tmin: -0.2, tmax: 1.0, baseline: [-0.2, 0.0]}
   words:      {tmin: -0.2, tmax: 5.0, baseline: [-0.2, 0.0]}
-  # Peak-to-peak reject threshold (microvolts). null = keep all epochs.
-  # Dry DSI-24 electrodes run high; tune per-subject after inspecting amplitudes
-  # (the epoch step prints median p2p), or plug in autoreject later.
+  # Peak-to-peak reject threshold (microvolts) — only used when autoreject is OFF.
   reject_uv: null
+  # autoreject: cross-validated per-channel thresholds; drops bad epochs and
+  # interpolates locally-bad channel-epochs (preferred over a global cutoff).
+  autoreject:
+    enabled: true
+    n_interpolate: [1, 2, 3, 4]
+    cv: 5
+    random_state: 97
+
+# --- Conditions (meaningful vs meaningless) ---------------------------
+# The stimuli_list 'category' column: 'authentic' = Lakota (meaningful),
+# anything else (False = NA_* invented) = meaningless.
+conditions:
+  meaningful_category: authentic
 
 # --- Speech-to-text (spoken word associations) ------------------------
 stt:

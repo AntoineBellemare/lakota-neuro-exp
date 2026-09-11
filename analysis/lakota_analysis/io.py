@@ -112,6 +112,37 @@ def load_behavior(sub: str) -> pd.DataFrame:
     return pd.read_csv(files["behavior_csv"], encoding="utf-8-sig")
 
 
+# condition (meaningful/meaningless) trial tables ---------------------------
+# which PsychoPy loop corresponds to each trigger condition
+_LOOP_OF = {"quick_view": "trials", "long_view": "trials_3", "words": "trials_2"}
+
+
+def condition_trials(sub: str, cond: str) -> pd.DataFrame:
+    """Ordered trial table for one phase: image, category, meaningful, condition.
+
+    Rows are in presentation order (as recorded). 'meaningful' is True when the
+    stimulus category is the configured meaningful category ('authentic').
+    """
+    df = load_behavior(sub)
+    loop = _LOOP_OF[cond]
+    key = f"{loop}.thisN"
+    if key not in df.columns:
+        raise KeyError(f"No loop column {key!r} in behavior for {cond}")
+    mask = pd.to_numeric(df[key], errors="coerce").notna()
+    t = df[mask].reset_index(drop=True)
+
+    mean_cat = str(C.CONFIG.get("conditions", {}).get("meaningful_category", "authentic")).lower()
+    cat = t["category"].astype(str)
+    out = pd.DataFrame({"image": t["image"].values, "category": cat.values})
+    out["meaningful"] = cat.str.lower().eq(mean_cat).values
+    out["condition"] = np.where(out["meaningful"], "meaningful", "meaningless")
+    if "slider.response" in t:
+        out["familiarity"] = pd.to_numeric(t["slider.response"], errors="coerce").values
+    if "textbox.text" in t:
+        out["typed_words"] = t["textbox.text"].values
+    return out
+
+
 def audio_index(sub: str) -> pd.DataFrame:
     """One row per spoken-word clip: symbol, resolved wav path, typed words.
 

@@ -31,8 +31,9 @@ Raw data stays in `data/<source_dir>/` (untouched). All outputs go to
 data/derivatives/sub-01/
 ├── qc/     qc_report.{json,md}
 ├── eeg/     *_desc-clean_raw.fif, *_ica.fif, *_cond-*_epo.fif
-├── audio/   <sub>_transcripts.tsv, <clip>.json
-└── figures/ *_01..08_*.png (300 dpi) + <sub>_qc_figures.pdf
+├── audio/      <sub>_transcripts.tsv, <clip>.json
+├── figures/    *_01..11_*.png (300 dpi) + <sub>_qc_figures.pdf
+└── conditions/ <sub>_<cond>_power_*.png, _complexity.png, _alpha_topo_diff.png, *.tsv
 ```
 
 ### QC figures (`05_qc_plots.py`)
@@ -41,7 +42,8 @@ data/derivatives/sub-01/
 4 ICA components · 5 ICA before/after · 6 per-channel PSD heatmap ·
 7 long-view evoked (joint) · 8 long-view epochs image ·
 9 bad-channel amplitudes · 10 interpolation before/after ·
-11 epoch-rejection diagnostics (channel×epoch p2p + per-epoch thresholds).
+11 epoch-rejection diagnostics (channel×epoch p2p + per-epoch thresholds) ·
+12 autoreject decision grids (good/interpolated/dropped) per condition.
 All also bundled into one PDF.
 
 ## Setup
@@ -70,6 +72,9 @@ uv run python analysis/scripts/04_transcribe_audio.py --sub sub-01
 
 # paper-ready QC figures (PSD, triggers, ICA, evoked) → figures/ + a combined PDF
 uv run python analysis/scripts/05_qc_plots.py --sub sub-01
+
+# meaningful vs meaningless contrast (power + complexity, long window)
+uv run python analysis/scripts/06_condition_analysis.py --sub sub-01
 ```
 
 ## Adding a subject
@@ -114,12 +119,14 @@ Run `01_qc_report.py` for the live version; as of the first pass:
 1. **ICA exclusions** are auto-detected from frontal channels (`Fp1/Fp2`, threshold
    2.5). Review `sub-01_ica_components.png` / the saved `_ica.fif` and set explicit
    excludes if needed.
-2. **Bad channels:** QC (fig 05/07) flagged **T8** (~14× median) and **P7**
-   (~4.5× median, drove the evoked) — failed dry electrodes. Both are listed in
-   `preprocess.bad_channels` and interpolated before ICA. Re-check per subject.
-3. **Artifact rejection is OFF by default** (`epoch.reject_uv: null`). Dry DSI-24
-   channels run high (individual channels exceed 150 µV p2p every epoch). Add
-   `autoreject` before group stats.
+2. **Bad channel:** QC (fig 09) flagged **T8** (~14× median — failed right-temporal
+   dry electrode); it's in `preprocess.bad_channels` and interpolated before ICA.
+   **P7** drove the *averaged* evoked but its raw amplitude is unremarkable, so it's
+   kept and its bad epochs are handled by autoreject instead. Re-check per subject.
+3. **Epoch rejection = autoreject** (`epoch.autoreject.enabled: true`): cross-validated
+   per-channel thresholds drop bad epochs and interpolate locally-bad channel-epochs.
+   For sub-01 it dropped 5/19 long-view and 1/20 words. Reject log pickled per
+   condition (see fig 12).
 4. **Trigger mapping** (11=RS, 12=quick, 13=long, 14=words) — confirmed.
 5. The pilot was recorded with `triggerhub-withSound`; the repo's `triggerhub-03`
    has its trigger code **disabled** (no markers in the generated script). Fix on the
@@ -128,3 +135,21 @@ Run `01_qc_report.py` for the live version; as of the first pass:
    fallback) transcribes most clips well. A few clips were spoken very quietly and
    stay empty/one-word — rows flagged `REVIEW` in `<sub>_transcripts.tsv`. For those,
    listen and correct by hand, or set `stt.model: medium.en` and re-run.
+
+## Meaningful vs meaningless (`06_condition_analysis.py`)
+
+Conditions come from the stimulus `category`: **meaningful** = `authentic` (10
+Lakota symbols), **meaningless** = invented (`NA_*`). Manipulation check holds
+strongly — familiarity ratings **4.75/5** vs **1.00/5**. Long-view epochs carry
+this as per-trial metadata (`epochs.metadata['condition']`), aligned for the late
+start (first long-view trial dropped).
+
+Outputs (`derivatives/<sub>/conditions/`): PSD by condition, relative band power,
+three complexity metrics (spectral entropy, Lempel-Ziv, permutation entropy), and an
+alpha-power difference topomap, plus the per-epoch tables (`*_bandpower.tsv`,
+`*_complexity.tsv`).
+
+> ⚠️ **Exploratory only.** One subject, ~7 epochs/condition. The Mann-Whitney
+> p-values are uncorrected and across-trial (not across-subject) — a rough guide, not
+> confirmatory stats. First-pass trend: meaningful shows slightly higher spectral
+> entropy / Lempel-Ziv complexity (p≈0.26), not significant at this n.
