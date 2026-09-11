@@ -39,8 +39,10 @@ data/derivatives/sub-01/
 
 1 PSD raw vs cleaned · 2 band-power topomaps · 3 trigger timeline ·
 4 ICA components · 5 ICA before/after · 6 per-channel PSD heatmap ·
-7 long-view evoked (joint) · 8 long-view epochs image. All also bundled into one
-PDF.
+7 long-view evoked (joint) · 8 long-view epochs image ·
+9 bad-channel amplitudes · 10 interpolation before/after ·
+11 epoch-rejection diagnostics (channel×epoch p2p + per-epoch thresholds).
+All also bundled into one PDF.
 
 ## Setup
 

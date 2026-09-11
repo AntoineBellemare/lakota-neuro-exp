@@ -200,6 +200,108 @@ def fig_epochs_image(sub):
     return figs if isinstance(figs, list) else [figs]
 
 
+def _bads(sub):
+    return list((C.CONFIG["preprocess"].get("bad_channels") or {}).get(sub, []))
+
+
+def fig_bad_channels(sub, raw_filt):
+    """Per-channel std (band-passed, pre-interpolation); interpolated channels in red."""
+    names = raw_filt.copy().pick("eeg").ch_names
+    std = raw_filt.get_data(picks="eeg").std(1) * 1e6
+    bads = set(_bads(sub))
+    order = np.argsort(std)
+    y = np.arange(len(names))
+    colors = ["crimson" if names[i] in bads else "steelblue" for i in order]
+    med = float(np.median(std))
+
+    fig, ax = plt.subplots(figsize=(7, 6), constrained_layout=True)
+    ax.barh(y, std[order], color=colors)
+    ax.set_yticks(y)
+    ax.set_yticklabels([names[i] for i in order], fontsize=8)
+    ax.axvline(med, color="k", ls="--", lw=1, label=f"median {med:.1f} µV")
+    ax.axvline(3 * med, color="grey", ls=":", lw=1, label=f"3× median")
+    ax.set_xlabel("channel std (µV)")
+    ax.set_title(f"{sub} — channel amplitude (bad = red: {sorted(bads) or 'none'})")
+    ax.legend(loc="lower right", fontsize=8)
+    return fig
+
+
+def fig_interpolation(sub, raw_filt):
+    """Interpolated channels: signal before (bad) vs after interpolation, one segment."""
+    bads = _bads(sub)
+    picks = [c for c in bads if c in raw_filt.ch_names]
+    if not picks:
+        return None
+    after = raw_filt.copy()
+    after.info["bads"] = picks
+    after.interpolate_bads(reset_bads=True, verbose=False)
+
+    sf = raw_filt.info["sfreq"]
+    t0 = min(30.0, raw_filt.times[-1] * 0.2)
+    sl = slice(int(t0 * sf), int((t0 + 15) * sf))
+    times = raw_filt.times[sl]
+    b = raw_filt.get_data(picks=picks)[:, sl] * 1e6
+    a = after.get_data(picks=picks)[:, sl] * 1e6
+
+    fig, axes = plt.subplots(len(picks), 1, figsize=(11, 1.8 * len(picks)),
+                             sharex=True, squeeze=False, constrained_layout=True)
+    for i, ch in enumerate(picks):
+        ax = axes[i, 0]
+        ax.plot(times, b[i], color="crimson", lw=0.7, label="before (flagged bad)")
+        ax.plot(times, a[i], color="seagreen", lw=0.9, label="after interpolation")
+        ax.set_ylabel(f"{ch}\n(µV)")
+        if i == 0:
+            ax.legend(loc="upper right", ncol=2, fontsize=8)
+    axes[-1, 0].set_xlabel("time (s)")
+    fig.suptitle(f"{sub} — bad-channel interpolation", fontweight="bold")
+    return fig
+
+
+def fig_epoch_rejection(sub):
+    """Per-epoch × channel peak-to-peak, with candidate reject thresholds."""
+    import mne
+
+    conds, data = [], {}
+    for cond in ("long_view", "words"):
+        f = C.paths.derivatives_dir / sub / "eeg" / f"{sub}_cond-{cond}_epo.fif"
+        if f.exists():
+            ep = mne.read_epochs(f, verbose=False)
+            if len(ep):
+                d = ep.get_data(picks="eeg") * 1e6      # (n_ep, n_ch, n_t)
+                data[cond] = (ep.copy().pick("eeg").ch_names, d.max(-1) - d.min(-1))
+                conds.append(cond)
+    if not conds:
+        return None
+
+    thresholds = [100, 150, 200]
+    fig, axes = plt.subplots(len(conds), 2, figsize=(12, 3.4 * len(conds)),
+                             squeeze=False, constrained_layout=True,
+                             gridspec_kw={"width_ratios": [2, 1.2]})
+    for r, cond in enumerate(conds):
+        names, p2p = data[cond]                          # p2p: (n_ep, n_ch)
+        im = axes[r, 0].imshow(p2p.T, aspect="auto", origin="lower", cmap="magma",
+                               vmax=np.percentile(p2p, 98))
+        axes[r, 0].set_yticks(np.arange(len(names)))
+        axes[r, 0].set_yticklabels(names, fontsize=6)
+        axes[r, 0].set_xlabel("epoch")
+        axes[r, 0].set_title(f"{cond}: channel × epoch p2p (µV)")
+        fig.colorbar(im, ax=axes[r, 0], label="µV")
+
+        emax = p2p.max(1)                                # worst channel per epoch
+        axes[r, 1].plot(np.arange(len(emax)), emax, "o-", ms=3, color="0.3")
+        for th in thresholds:
+            n_bad = int((emax > th).sum())
+            axes[r, 1].axhline(th, ls="--", lw=1,
+                               label=f"{th} µV → drop {n_bad}/{len(emax)}")
+        axes[r, 1].set_xlabel("epoch")
+        axes[r, 1].set_ylabel("max p2p (µV)")
+        axes[r, 1].set_title(f"{cond}: worst-channel p2p per epoch")
+        axes[r, 1].legend(fontsize=7)
+    fig.suptitle(f"{sub} — epoch rejection diagnostics (reject currently OFF)",
+                 fontweight="bold")
+    return fig
+
+
 # --- driver -----------------------------------------------------------------
 def generate_all(sub: str) -> list:
     set_paper_style()
@@ -219,6 +321,9 @@ def generate_all(sub: str) -> list:
         ("06_channel_psd_heatmap", lambda: [fig_channel_psd_heatmap(sub, clean)] if clean else []),
         ("07_evoked_longview", lambda: [f for f in [fig_evoked_joint(sub)] if f]),
         ("08_epochs_image_longview", lambda: fig_epochs_image(sub)),
+        ("09_bad_channels", lambda: [fig_bad_channels(sub, raw_filt)]),
+        ("10_interpolation", lambda: [f for f in [fig_interpolation(sub, raw_filt)] if f]),
+        ("11_epoch_rejection", lambda: [f for f in [fig_epoch_rejection(sub)] if f]),
     ]
 
     saved, all_figs = [], []
