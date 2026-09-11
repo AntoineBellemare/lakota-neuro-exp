@@ -1,0 +1,86 @@
+# =====================================================================
+# Lakota Neuro — analysis configuration
+# All paths are relative to the repository root unless absolute.
+# Edit this file to add subjects or tune parameters; the code reads it.
+# =====================================================================
+
+paths:
+  data_dir: data                 # raw / source data (git-ignored)
+  derivatives_dir: data/derivatives   # processed outputs (git-ignored)
+
+# --- Subject registry -------------------------------------------------
+# Map a BIDS-like subject label -> its raw folder under data_dir.
+# Files inside are auto-discovered by pattern (see io.py), so you only
+# need to point at the folder.
+subjects:
+  sub-01:
+    source_dir: pilot-01
+    notes: "Pilot (Pilot_kite_1). EEG recording started late: first RS,
+            entire quick-view phase, and first long-view trial are absent
+            from the EEG (behavioral + audio are complete)."
+
+# --- Experiment design (ground truth for QC) --------------------------
+design:
+  n_symbols: 20
+  quick_reps: 2      # phase 1: each symbol shown 2x (short ~1 s)
+  long_reps: 1       # phase 2: each symbol once (~5 s) + meaningfulness rating
+  words_reps: 1      # phase 3: each symbol once, typed + spoken words
+  resting_states: 2  # one at start, one at end
+
+# --- Trigger codes (value in the DSI 'Trigger' column) ----------------
+triggers:
+  resting_state: 11
+  quick_view: 12
+  long_view: 13
+  words: 14
+
+# --- EEG acquisition (DSI-24) -----------------------------------------
+eeg:
+  sfreq: 300                # nominal DSI-24 sampling rate (Hz)
+  mains_freq: 60            # notch (Hz)
+  eeg_units_to_volts: 1.0e-6  # CSV is in microvolts
+  # DSI CSV channel order (suffix '-Vref' is stripped on load)
+  channels: [Fp1, Fp2, Fz, F3, F4, F7, F8, Cz, C3, C4, T3, T4, T5, T6, Pz, P3, P4, O1, O2, A1, A2]
+  reference_channels: [A1, A2]   # data is recorded vs avg(A1,A2); marked 'misc'
+  # old 10-20 -> 10-10 names so the standard_1020 montage matches
+  rename_for_montage: {T3: T7, T4: T8, T5: P7, T6: P8}
+
+# --- Preprocessing ----------------------------------------------------
+preprocess:
+  l_freq: 1.0
+  h_freq: 40.0
+  notch: true
+  bad_channels:             # per-subject, filled in after QC review
+    sub-01: [T8, P7]        # failed dry electrodes: T8 (right-temporal, ~14x median),
+                            # P7 (left-posterior, drove the evoked ~4.5x median)
+  ica:
+    enabled: true
+    method: infomax         # extended infomax (no extra deps); or fastica (needs sklearn), picard
+    n_components: 0.99       # fraction of variance, or an int
+    eog_proxies: [Fp1, Fp2] # frontal channels used to detect blinks
+    eog_threshold: 2.5      # lower = more sensitive blink-component detection
+    random_state: 97
+
+# --- Epoching ---------------------------------------------------------
+epoch:
+  long_view:  {tmin: -0.2, tmax: 5.0, baseline: [-0.2, 0.0]}
+  quick_view: {tmin: -0.2, tmax: 1.0, baseline: [-0.2, 0.0]}
+  words:      {tmin: -0.2, tmax: 5.0, baseline: [-0.2, 0.0]}
+  # Peak-to-peak reject threshold (microvolts). null = keep all epochs.
+  # Dry DSI-24 electrodes run high; tune per-subject after inspecting amplitudes
+  # (the epoch step prints median p2p), or plug in autoreject later.
+  reject_uv: null
+
+# --- Speech-to-text (spoken word associations) ------------------------
+stt:
+  engine: faster-whisper
+  model: small.en           # base.en / small.en / medium.en (larger = better, slower)
+  language: en
+  device: auto              # auto -> cuda if available else cpu
+  compute_type: int8        # int8 (cpu) / float16 (gpu)
+  vad_filter: true          # voice-activity detection = robust to noise/silence
+  beam_size: 5
+  normalize: false          # peak-normalise before STT — OFF: it amplifies noise on
+                            # this mic and hurt more clips than it helped. For quiet
+                            # audio prefer a bigger model (medium.en). Opt-in per dataset.
+  target_peak: 0.97
