@@ -91,7 +91,72 @@ def epoch(sub: str, save: bool = True, verbose: bool = False) -> dict:
             med = float(np.median(data.max(-1) - data.min(-1)) * 1e6) if len(ep) else float("nan")
             print(f"[epoch] {sub}: {cond} -> {len(ep)}/{n_ev} epochs kept, "
                   f"median p2p {med:.0f} µV{note}  ({fpath.name})")
+        # short within-stimulus windows for power/complexity
+        if C.CONFIG.get("subepoch", {}).get("enabled", False):
+            subepochs(sub, cond, save=save, verbose=verbose)
     return epochs
+
+
+def subepochs(sub: str, cond: str = "long_view", save: bool = True, verbose: bool = False):
+    """Cut each stimulus into short fixed-length windows (for power/complexity).
+
+    Windows inherit the parent trial's condition metadata (+ parent_trial, window
+    index). Autoreject then operates per-window, so a transient artifact costs one
+    short window rather than a whole 5 s trial.
+    """
+    import numpy as np
+    import pandas as pd
+    import mne
+
+    from . import io
+
+    sc = C.CONFIG.get("subepoch", {})
+    if not sc.get("enabled", False):
+        return None
+
+    raw = _load_clean_or_raw(sub, verbose=verbose)
+    events = mne.find_events(raw, stim_channel="STI", consecutive=True, verbose=False)
+    code = C.TRIGGERS[cond]
+    cond_ev = events[events[:, 2] == code]
+    if len(cond_ev) == 0:
+        return None
+
+    trials = io.condition_trials(sub, cond)
+    n_ev, n_tr = len(cond_ev), len(trials)
+    if n_ev < n_tr:                                    # late start -> use trailing trials
+        trials = trials.iloc[n_tr - n_ev:].reset_index(drop=True)
+
+    sf = raw.info["sfreq"]
+    L, ov = sc["length"], sc.get("overlap", 0.0)
+    step = L * (1 - ov)
+    starts = np.arange(sc.get("tmin", 0.0), sc.get("tmax", 5.0) - L + 1e-9, step)
+
+    sub_ev, md = [], []
+    for k in range(n_ev):
+        onset = cond_ev[k, 0]
+        base = trials.iloc[k].to_dict()
+        for wi, st in enumerate(starts):
+            sub_ev.append([int(onset + st * sf), 0, code])
+            md.append({**base, "parent_trial": k, "window": wi})
+    sub_ev = np.array(sub_ev, dtype=int)
+    meta = pd.DataFrame(md)
+
+    ep = mne.Epochs(raw, sub_ev, event_id={cond: code}, tmin=0.0, tmax=L,
+                    baseline=None, metadata=meta, preload=True, verbose=verbose)
+
+    note = ""
+    sc_ar = sc.get("autoreject", True)
+    if sc_ar and len(ep) >= 8:
+        ar_cfg = C.CONFIG["epoch"].get("autoreject", {})
+        ep, note = _run_autoreject(sub, f"{cond}-sub", ep, ar_cfg, C.deriv_dir(sub, "eeg"), verbose)
+
+    if save:
+        fpath = C.deriv_dir(sub, "eeg") / f"{sub}_cond-{cond}_desc-sub_epo.fif"
+        ep.save(fpath, overwrite=True, verbose=verbose)
+        vc = ep.metadata["condition"].value_counts().to_dict()
+        print(f"[subepoch] {sub}: {cond} -> {len(ep)} windows "
+              f"({L}s, step {step}s){note}; by condition {vc}  ({fpath.name})")
+    return ep
 
 
 def _run_autoreject(sub, cond, ep, ar_cfg, out_dir, verbose):
@@ -102,8 +167,10 @@ def _run_autoreject(sub, cond, ep, ar_cfg, out_dir, verbose):
 
     n_before = len(ep)
     cv = min(ar_cfg.get("cv", 5), n_before)
+    consensus = ar_cfg.get("consensus")
     ar = AutoReject(
         n_interpolate=ar_cfg.get("n_interpolate", [1, 2, 3, 4]),
+        consensus=[consensus] if consensus is not None else None,
         cv=cv, random_state=ar_cfg.get("random_state", 97),
         n_jobs=1, verbose=False,
     )

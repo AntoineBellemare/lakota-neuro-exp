@@ -32,10 +32,14 @@ BANDS = {"delta": (1, 4), "theta": (4, 8), "alpha": (8, 13),
 ORDER = ["meaningful", "meaningless"]
 
 
-def _load(sub, cond="long_view"):
+def _load(sub, cond="long_view", kind="sub"):
+    """kind='sub' -> short within-stimulus windows; 'trial' -> full 5 s epochs."""
     import mne
 
-    f = C.paths.derivatives_dir / sub / "eeg" / f"{sub}_cond-{cond}_epo.fif"
+    suffix = "_desc-sub" if kind == "sub" else ""
+    f = C.paths.derivatives_dir / sub / "eeg" / f"{sub}_cond-{cond}{suffix}_epo.fif"
+    if not f.exists() and kind == "sub":
+        f = C.paths.derivatives_dir / sub / "eeg" / f"{sub}_cond-{cond}_epo.fif"
     ep = mne.read_epochs(f, verbose=False)
     if ep.metadata is None or "condition" not in ep.metadata:
         raise RuntimeError(f"{sub} {cond}: epochs have no condition metadata — re-run epoching.")
@@ -51,9 +55,11 @@ def power_table(sub, cond="long_view"):
     data = data.mean(axis=1)                            # channel-average -> (n_ep, n_freq)
     total = _trapz(data, freqs, axis=1)
     rows = []
-    cond_lab = ep.metadata["condition"].to_numpy()
+    md = ep.metadata.reset_index(drop=True)
+    cond_lab = md["condition"].to_numpy()
     for i in range(data.shape[0]):
-        row = {"epoch": i, "condition": cond_lab[i], "image": ep.metadata["image"].iloc[i]}
+        row = {"condition": cond_lab[i], "image": md["image"].iloc[i],
+               "parent_trial": int(md["parent_trial"].iloc[i]) if "parent_trial" in md else i}
         for band, (lo, hi) in BANDS.items():
             m = (freqs >= lo) & (freqs < hi)
             row[band] = float(_trapz(data[i, m], freqs[m]) / total[i])  # relative
@@ -66,10 +72,11 @@ def complexity_table(sub, cond="long_view"):
     """Per-epoch complexity (channel-averaged) on the post-stimulus window."""
     import antropy as ant
 
-    ep = _load(sub, cond).copy().crop(tmin=0)
+    ep = _load(sub, cond)
     sf = ep.info["sfreq"]
     X = ep.get_data(picks="eeg")                        # (n_ep, n_ch, n_t)
-    cond_lab = ep.metadata["condition"].to_numpy()
+    md = ep.metadata.reset_index(drop=True)
+    cond_lab = md["condition"].to_numpy()
     rows = []
     for i in range(X.shape[0]):
         se, lz, pe = [], [], []
@@ -78,7 +85,8 @@ def complexity_table(sub, cond="long_view"):
             se.append(ant.spectral_entropy(x, sf=sf, method="welch", normalize=True))
             lz.append(ant.lziv_complexity((x > np.median(x)).astype(int), normalize=True))
             pe.append(ant.perm_entropy(x, normalize=True))
-        rows.append({"epoch": i, "condition": cond_lab[i],
+        rows.append({"condition": cond_lab[i],
+                     "parent_trial": int(md["parent_trial"].iloc[i]) if "parent_trial" in md else i,
                      "spectral_entropy": np.nanmean(se),
                      "lempel_ziv": np.nanmean(lz),
                      "perm_entropy": np.nanmean(pe)})
@@ -87,13 +95,17 @@ def complexity_table(sub, cond="long_view"):
 
 # --- stats helper -----------------------------------------------------------
 def _mwu(df, col):
+    """Mann-Whitney on PER-TRIAL means (sub-windows averaged within trial first,
+    so pseudo-replication doesn't inflate n). Returns (p, n_meaningful, n_meaningless)."""
     from scipy.stats import mannwhitneyu
 
-    a = df.loc[df.condition == "meaningful", col].dropna()
-    b = df.loc[df.condition == "meaningless", col].dropna()
+    unit = (df.groupby(["condition", "parent_trial"])[col].mean().reset_index()
+            if "parent_trial" in df else df)
+    a = unit.loc[unit.condition == "meaningful", col].dropna()
+    b = unit.loc[unit.condition == "meaningless", col].dropna()
     if len(a) < 2 or len(b) < 2:
-        return np.nan
-    return float(mannwhitneyu(a, b).pvalue)
+        return np.nan, len(a), len(b)
+    return float(mannwhitneyu(a, b).pvalue), len(a), len(b)
 
 
 # --- figures ----------------------------------------------------------------
@@ -125,11 +137,13 @@ def fig_bandpower(sub, tbl, cond):
             ax.scatter(xs + np.random.uniform(-0.05, 0.05, len(sub_t)),
                        sub_t[b], color="k", s=8, alpha=0.4, zorder=3)
     for k, b in enumerate(BANDS):
-        p = _mwu(tbl, b)
+        p, na, nb = _mwu(tbl, b)
         if not np.isnan(p):
             ax.text(x[k], ax.get_ylim()[1] * 0.96, f"p={p:.2f}", ha="center", fontsize=8, color="0.3")
+    ntr = _mwu(tbl, list(BANDS)[0])[1:]
     ax.set_xticks(x); ax.set_xticklabels(list(BANDS))
-    ax.set(ylabel="relative power", title=f"{sub} — {cond} relative band power (exploratory)")
+    ax.set(ylabel="relative power",
+           title=f"{sub} — {cond} relative band power  (windows; p on {ntr[0]}v{ntr[1]} trials)")
     ax.legend()
     return fig
 
@@ -147,10 +161,11 @@ def fig_complexity(sub, tbl, cond):
             v = tbl.loc[tbl.condition == c, metric].dropna()
             ax.scatter(np.full(len(v), j + 1) + np.random.uniform(-0.06, 0.06, len(v)),
                        v, color=COND_COLORS[c], s=18, zorder=3)
-        p = _mwu(tbl, metric)
-        ax.set_title(f"{metric}\n(p={p:.2f})" if not np.isnan(p) else metric)
+        p, na, nb = _mwu(tbl, metric)
+        ax.set_title(f"{metric}\np={p:.2f} ({na}v{nb} trials)" if not np.isnan(p) else metric)
         ax.tick_params(axis="x", labelrotation=15)
-    fig.suptitle(f"{sub} — {cond} complexity by condition (exploratory)", fontweight="bold")
+    fig.suptitle(f"{sub} — {cond} complexity by condition (points = 1 s windows; exploratory)",
+                 fontweight="bold")
     return fig
 
 

@@ -138,18 +138,26 @@ Run `01_qc_report.py` for the live version; as of the first pass:
 
 ## Meaningful vs meaningless (`06_condition_analysis.py`)
 
-Conditions come from the stimulus `category`: **meaningful** = `authentic` (10
-Lakota symbols), **meaningless** = invented (`NA_*`). Manipulation check holds
-strongly — familiarity ratings **4.75/5** vs **1.00/5**. Long-view epochs carry
-this as per-trial metadata (`epochs.metadata['condition']`), aligned for the late
-start (first long-view trial dropped).
+Conditions from the stimulus `category`: **meaningful** = `authentic` (10 Lakota
+symbols), **meaningless** = invented (`NA_*`, 10). Manipulation check is strong —
+familiarity **4.75/5** vs **1.00/5**.
+
+Each 5 s long-view stimulus is cut into **1 s windows** (`config.yaml → subepoch`)
+so artifact rejection is granular (autoreject drops ~15 % of *windows* instead of
+whole 5 s trials) and distributions are well populated. Windows inherit the parent
+trial's condition (`epochs.metadata`), so power/complexity use many samples while
+**statistics are computed on per-trial means** (the independent unit) — sub-windows
+enrich the picture without inflating n.
 
 Outputs (`derivatives/<sub>/conditions/`): PSD by condition, relative band power,
-three complexity metrics (spectral entropy, Lempel-Ziv, permutation entropy), and an
-alpha-power difference topomap, plus the per-epoch tables (`*_bandpower.tsv`,
-`*_complexity.tsv`).
+complexity (spectral entropy, Lempel-Ziv, permutation entropy), an alpha-power
+difference topomap, and per-window tables.
 
-> ⚠️ **Exploratory only.** One subject, ~7 epochs/condition. The Mann-Whitney
-> p-values are uncorrected and across-trial (not across-subject) — a rough guide, not
-> confirmatory stats. First-pass trend: meaningful shows slightly higher spectral
-> entropy / Lempel-Ziv complexity (p≈0.26), not significant at this n.
+**sub-01 counts:** 20 trials (10+10) → 19 in EEG (first — a meaningful one — lost to
+the late start → 9+10) → autoreject removes one meaningful trial's windows entirely
+→ **8 meaningful / 10 meaningless trials = 36 / 45 one-second windows.**
+
+> ⚠️ **Exploratory.** Single subject; p-values (Mann-Whitney on per-trial means) are
+> uncorrected and across-trial, not across-subject. First pass: no reliable
+> power/complexity difference at this n (meaningful trends marginally higher spectral
+> entropy / Lempel-Ziv). Real inference needs a group.

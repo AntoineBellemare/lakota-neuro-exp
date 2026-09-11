@@ -70,11 +70,27 @@ epoch:
   reject_uv: null
   # autoreject: cross-validated per-channel thresholds; drops bad epochs and
   # interpolates locally-bad channel-epochs (preferred over a global cutoff).
+  # To make it LESS strict: raise `consensus` (fraction of channels that must
+  # agree an epoch is bad before it is dropped) or widen `n_interpolate`.
   autoreject:
     enabled: true
     n_interpolate: [1, 2, 3, 4]
+    consensus: null           # null = data-driven grid; e.g. 0.6 drops fewer epochs
     cv: 5
     random_state: 97
+
+# --- Sub-epoching (short windows within a stimulus, for power/complexity) ----
+# Long 5 s trials are cut into short windows so artifact rejection is granular
+# (a blink costs one window, not the whole trial) and there are many more samples
+# per condition. Used by the condition analysis; the full-trial epochs are kept
+# for ERPs/QC.
+subepoch:
+  enabled: true
+  length: 1.0        # window length (s)
+  overlap: 0.0       # 0-1 fraction of overlap between windows
+  tmin: 0.0          # window range within the stimulus (s from onset)
+  tmax: 5.0
+  autoreject: true
 
 # --- Conditions (meaningful vs meaningless) ---------------------------
 # The stimuli_list 'category' column: 'authentic' = Lakota (meaningful),
