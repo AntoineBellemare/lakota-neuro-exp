@@ -32,8 +32,9 @@ data/derivatives/sub-01/
 ├── qc/     qc_report.{json,md}
 ├── eeg/     *_desc-clean_raw.fif, *_ica.fif, *_cond-*_epo.fif
 ├── audio/      <sub>_transcripts.tsv, <clip>.json
-├── figures/    *_01..11_*.png (300 dpi) + <sub>_qc_figures.pdf
-└── conditions/ <sub>_<cond>_power_*.png, _complexity.png, _alpha_topo_diff.png, *.tsv
+├── figures/    *_01..12_*.png (300 dpi) + <sub>_qc_figures.pdf
+├── conditions/ <sub>_<cond>_power_*.png, _complexity.png, _alpha_topo_diff.png, *.tsv
+└── <sub>_report.html   ← integrated self-contained report (all of the above)
 ```
 
 ### QC figures (`05_qc_plots.py`)
@@ -75,6 +76,9 @@ uv run python analysis/scripts/05_qc_plots.py --sub sub-01
 
 # meaningful vs meaningless contrast (power + complexity, long window)
 uv run python analysis/scripts/06_condition_analysis.py --sub sub-01
+
+# integrated self-contained HTML report (QC tables + all figures in one page)
+uv run python analysis/scripts/07_report.py --sub sub-01
 ```
 
 ## Adding a subject
